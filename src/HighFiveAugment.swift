@@ -190,6 +190,9 @@ final class HighFiveAugment: Augment {
     override func stop() {
         detector.isEnabled = false
         detector.reset()
+        // Turn the trackpad devices off too, so a disabled augment leaves
+        // nothing running in the background.
+        Multitouch.shared.stop()
         status = "Off"
         Log.write("highfive stopped")
     }

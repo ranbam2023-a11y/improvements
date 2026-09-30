@@ -185,7 +185,6 @@ class Augment: ObservableObject, Identifiable {
 // MARK: - Persistence
 
 private struct PersistedAugment: Codable {
-    var enabled: Bool
     var config: [String: SettingValue]
 }
 
@@ -246,18 +245,24 @@ final class AppModel: ObservableObject {
     }
 
     func save() {
+        // Only enabled augments are stored. A disabled augment keeps nothing on
+        // disk — no settings, no state — so turning it off really turns it off.
         var dictionary: [String: PersistedAugment] = [:]
-        for augment in augments {
-            dictionary[augment.id] = PersistedAugment(enabled: augment.enabled,
-                                                      config: augment.config)
+        for augment in augments where augment.enabled {
+            dictionary[augment.id] = PersistedAugment(config: augment.config)
         }
-        let root = Persisted(augments: dictionary)
+
+        guard !dictionary.isEmpty else {
+            try? FileManager.default.removeItem(at: configURL)
+            return
+        }
+
         do {
             try FileManager.default.createDirectory(at: configURL.deletingLastPathComponent(),
                                                     withIntermediateDirectories: true)
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            try encoder.encode(root).write(to: configURL, options: .atomic)
+            try encoder.encode(Persisted(augments: dictionary)).write(to: configURL, options: .atomic)
         } catch {
             Log.write("save failed: \(error.localizedDescription)")
         }
@@ -266,10 +271,11 @@ final class AppModel: ObservableObject {
     private func load() {
         guard let data = try? Data(contentsOf: configURL),
               let root = try? JSONDecoder().decode(Persisted.self, from: data) else { return }
+        // Anything in the file is by definition an enabled augment.
         for augment in augments {
             guard let saved = root.augments[augment.id] else { continue }
             if !saved.config.isEmpty { augment.config = saved.config }
-            augment.enabled = saved.enabled
+            augment.enabled = true
         }
     }
 
