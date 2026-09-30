@@ -356,8 +356,9 @@ final class DetailViewController: NSViewController {
         toggle.state = augment.enabled ? .on : .off
         let toggleProxy = ActionProxy { [weak self] sender in
             let on = (sender as? NSSwitch)?.state == .on
-            augment.enabled = on
-            self?.statusUpdater?()
+            self?.model.setEnabled(augment, on)
+            // The augment may add or remove UI (a menu bar item), so redraw.
+            DispatchQueue.main.async { self?.rebuild() }
         }
         retained.append(toggleProxy)
         toggle.target = toggleProxy
@@ -394,7 +395,9 @@ final class DetailViewController: NSViewController {
                                   color: .secondaryLabelColor)
         let logLabel = UI.label(Log.url.path, font: .systemFont(ofSize: 11), color: .tertiaryLabelColor)
         add(infoRow("Status", statusLabel), fullWidth: true)
-        add(infoRow("Last gesture", eventLabel), fullWidth: true)
+        if augment.lastEvent != nil {
+            add(infoRow("Last gesture", eventLabel), fullWidth: true)
+        }
         add(infoRow("Log", logLabel), fullWidth: true)
 
         statusUpdater = { [weak statusLabel, weak eventLabel] in
@@ -430,19 +433,22 @@ final class DetailViewController: NSViewController {
         add(UI.label("Keeps your augments running without having to open the app.",
                      font: .systemFont(ofSize: 11), color: .secondaryLabelColor), fullWidth: true)
 
-        if LegacyHighFive.isInstalled {
-            add(sectionTitle("Old version found"), fullWidth: true, top: 6)
-            add(UI.label("The old standalone HighFive agent is still installed. It would react to the same gesture a second time.",
-                         font: .systemFont(ofSize: 12), color: .secondaryLabelColor), fullWidth: true)
-            let removeButton = NSButton(title: "Remove old HighFive", target: nil, action: nil)
-            let removeProxy = ActionProxy { [weak self] _ in
-                LegacyHighFive.remove()
-                self?.show(id: "general")
+        let legacyFound = Legacy.all.filter { $0.isInstalled() }
+        if !legacyFound.isEmpty {
+            add(sectionTitle("Old versions found"), fullWidth: true, top: 6)
+            for item in legacyFound {
+                add(UI.label(item.detail, font: .systemFont(ofSize: 12), color: .secondaryLabelColor),
+                    fullWidth: true)
+                let removeButton = NSButton(title: item.buttonTitle, target: nil, action: nil)
+                let removeProxy = ActionProxy { [weak self] _ in
+                    item.remove()
+                    self?.show(id: "general")
+                }
+                retained.append(removeProxy)
+                removeButton.target = removeProxy
+                removeButton.action = #selector(ActionProxy.fire(_:))
+                add(removeButton, top: 4)
             }
-            retained.append(removeProxy)
-            removeButton.target = removeProxy
-            removeButton.action = #selector(ActionProxy.fire(_:))
-            add(removeButton, top: 4)
         }
 
         add(sectionTitle("Files"), fullWidth: true, top: 6)

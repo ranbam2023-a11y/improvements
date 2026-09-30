@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import AppKit
 import Combine
 import ServiceManagement
 
@@ -209,7 +210,7 @@ final class AppModel: ObservableObject {
     private var pendingSave: DispatchWorkItem?
 
     init() {
-        augments = [HighFiveAugment()]
+        augments = [HighFiveAugment(), MenuTypeAugment()]
 
         let support = FileManager.default.urls(for: .applicationSupportDirectory,
                                                in: .userDomainMask).first!
@@ -226,13 +227,21 @@ final class AppModel: ObservableObject {
         load()
         refreshLoginItem()
 
+        // Anything not enabled keeps nothing on disk.
+        for augment in augments where !augment.enabled {
+            AugmentData.removeAll(for: augment.id)
+        }
+
         Log.write("app started, augments=\(augments.map { $0.id }.joined(separator: ","))")
     }
 
     var selectedAugment: Augment? { augments.first { $0.id == selection } }
 
     func setEnabled(_ augment: Augment, _ value: Bool) {
+        guard augment.enabled != value else { return }
         augment.enabled = value
+        // A disabled augment stores nothing, so drop whatever it had.
+        if !value { AugmentData.removeAll(for: augment.id) }
     }
 
     // MARK: Persisting
@@ -300,27 +309,67 @@ final class AppModel: ObservableObject {
     }
 }
 
-// MARK: - Legacy HighFive cleanup
+// MARK: - Legacy app cleanup
 
-/// The standalone HighFive agent this app replaces. If it's still installed it
-/// would fire a second time on every gesture, so we offer to remove it.
-enum LegacyHighFive {
-    static var agentPath: String {
+/// A standalone app this one replaces. If it's still installed you'd get two
+/// copies of the same behaviour, so the General page offers to remove it.
+struct LegacyInstall: Identifiable {
+    let id: String
+    let buttonTitle: String
+    let detail: String
+    let isInstalled: () -> Bool
+    let remove: () -> Void
+}
+
+enum Legacy {
+    static var all: [LegacyInstall] { [highFive, menuType] }
+
+    // MARK: High Five
+
+    private static var highFiveAgentPath: String {
         NSHomeDirectory() + "/Library/LaunchAgents/com.ranbam.highfive.plist"
     }
-    static var appPath: String {
-        NSHomeDirectory() + "/Applications/HighFive.app"
+    private static var highFiveAppPaths: [String] {
+        ["/Applications/HighFive.app", NSHomeDirectory() + "/Applications/HighFive.app"]
     }
-    static var isInstalled: Bool {
-        let fm = FileManager.default
-        return fm.fileExists(atPath: agentPath) || fm.fileExists(atPath: appPath)
+
+    static let highFive = LegacyInstall(
+        id: "highfive",
+        buttonTitle: "Remove old HighFive",
+        detail: "The old standalone HighFive agent is still installed, so it would react to the same gesture a second time.",
+        isInstalled: {
+            let fm = FileManager.default
+            return fm.fileExists(atPath: highFiveAgentPath)
+                || highFiveAppPaths.contains { fm.fileExists(atPath: $0) }
+        },
+        remove: {
+            let uid = getuid()
+            Log.run("/bin/launchctl", ["bootout", "gui/\(uid)/com.ranbam.highfive"])
+            Log.run("/bin/launchctl", ["bootout", "gui/\(uid)", highFiveAgentPath])
+            try? FileManager.default.removeItem(atPath: highFiveAgentPath)
+            for path in highFiveAppPaths { try? FileManager.default.removeItem(atPath: path) }
+            Log.write("removed legacy HighFive agent/app")
+        }
+    )
+
+    // MARK: MenuType
+
+    private static var menuTypeAppPaths: [String] {
+        ["/Applications/MenuType.app", NSHomeDirectory() + "/Applications/MenuType.app"]
     }
-    static func remove() {
-        let uid = getuid()
-        Log.run("/bin/launchctl", ["bootout", "gui/\(uid)/com.ranbam.highfive"])
-        Log.run("/bin/launchctl", ["bootout", "gui/\(uid)", agentPath])
-        try? FileManager.default.removeItem(atPath: agentPath)
-        try? FileManager.default.removeItem(atPath: appPath)
-        Log.write("removed legacy HighFive agent/app")
-    }
+
+    static let menuType = LegacyInstall(
+        id: "menutype",
+        buttonTitle: "Remove old MenuType",
+        detail: "The standalone MenuType app is still installed, so you'd get two typing trainers in the menu bar.",
+        isInstalled: { menuTypeAppPaths.contains { FileManager.default.fileExists(atPath: $0) } },
+        remove: {
+            // Quit only the standalone app, by bundle identifier.
+            for app in NSRunningApplication.runningApplications(withBundleIdentifier: "com.ranbam.menutype") {
+                app.terminate()
+            }
+            for path in menuTypeAppPaths { try? FileManager.default.removeItem(atPath: path) }
+            Log.write("removed legacy MenuType app")
+        }
+    )
 }

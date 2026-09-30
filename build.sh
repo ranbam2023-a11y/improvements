@@ -44,7 +44,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 echo "--> compiling"
 swiftc -O -swift-version 5 \
        -import-objc-header "$ROOT/src/mt.h" \
-       "$ROOT"/src/*.swift \
+       $(find "$ROOT/src" -name '*.swift') \
        -o "$APP/Contents/MacOS/$APP_NAME"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 cp "$ICNS" "$APP/Contents/Resources/AppIcon.icns"

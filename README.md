@@ -30,6 +30,21 @@ and includes a **Test** button so you can try the shortcut without the trackpad.
 Other settings: how many fingers are required, tap vs. pinch, and the timing
 thresholds for each.
 
+### MenuType
+
+A typing trainer in the menu bar. A random word sits up there and fills in as
+you type — click it for your speed and accuracy. Space moves to the next word,
+⌫ fixes a typo, esc skips.
+
+It only listens while the panel is open by default, which needs no permissions.
+Flip the panel's switch to **Everywhere** and it follows you into any app — that
+mode captures keystrokes system-wide, so it needs Accessibility, and it switches
+itself off after a minute of not typing.
+
+Word list and panel appearance are chosen in the panel's own Settings section.
+Its stats and settings live in the augment's own store, so turning the augment
+off clears them along with everything else.
+
 The app is plain AppKit — no SwiftUI, no Xcode project — so it builds with
 nothing but the command line tools.
 
@@ -82,11 +97,14 @@ src/
   main.swift              app bootstrap: window, menus, menu bar item
   UI.swift                sidebar, detail pane, settings controls (AppKit)
   Model.swift             augments, typed settings, persistence, login item
+  AugmentData.swift       per-augment storage, wiped when an augment is off
   HighFiveAugment.swift   the first augment
   Detector.swift          contact frames → gestures (fully tunable)
   Multitouch.swift        private MultitouchSupport, dlopen'd at runtime
+  Shortcut.swift          parse and post keyboard shortcuts
   Log.swift               ~/Library/Logs/Improvements.log
   mt.h                    MTTouch layout
+  Augments/MenuType/      the second augment (SwiftUI panel, word list, stats)
 tools/make-icon.swift     generates the app icon
 Resources/Info.plist
 build.sh                  build the app, or a .dmg with --dmg
